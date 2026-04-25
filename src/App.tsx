@@ -40,6 +40,7 @@ const API_BASE_URL = 'https://python-model-omar.vercel.app';
 const AUTH_ENDPOINT = `${API_BASE_URL}/auth/login`;
 const REQUEST_ENDPOINT = `${API_BASE_URL}/request`;
 const DDOS_REQUEST_ENDPOINT = `${API_BASE_URL}/ddos-request`;
+const AUTOMATED_ACTIONS_ENDPOINT = `${API_BASE_URL}/automated-actions/detect`;
 const AUTH_STORAGE_KEY = 'dashboard-auth-session';
 
 const stats: StatCard[] = [
@@ -117,6 +118,18 @@ async function trackDdosRequest(): Promise<GuardResponse | null> {
   return null;
 }
 
+async function triggerAutomatedAction(payload: Record<string, number | string>): Promise<void> {
+  try {
+    await fetch(AUTOMATED_ACTIONS_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    // Keep UI flow alive even if the local automated action service is down.
+  }
+}
+
 function BlockedPage({ blockInfo }: { blockInfo: GuardResponse | null }) {
   const deviceIp = useMemo(() => blockInfo?.device_ip ?? 'Unknown', [blockInfo]);
   const requestCount = useMemo(() => blockInfo?.count ?? 0, [blockInfo]);
@@ -168,6 +181,13 @@ function SignInPage() {
       setIsLoading(true);
       const requestBlocked = await trackLoginRequest();
       if (requestBlocked !== null) {
+        await triggerAutomatedAction({
+          username: 'root',
+          hour: 22,
+          day_of_week: 0,
+          password_count: 6,
+          foreign_ip: '42.7.27.166',
+        });
         setBlockInfo(requestBlocked);
         toast.error('Device is blocked by request guard.');
         return;
@@ -175,6 +195,13 @@ function SignInPage() {
 
       const blocked = await checkIsBlocked();
       if (blocked !== null) {
+        await triggerAutomatedAction({
+          username: 'root',
+          hour: 22,
+          day_of_week: 0,
+          password_count: 6,
+          foreign_ip: '42.7.27.166',
+        });
         setBlockInfo(blocked);
         toast.error('Device is blocked. Login is disabled.');
         return;
@@ -194,6 +221,13 @@ function SignInPage() {
       await trackLoginRequest();
       const blockedAfterRequest = await checkIsBlocked();
       if (blockedAfterRequest !== null) {
+        await triggerAutomatedAction({
+          username: 'root',
+          hour: 22,
+          day_of_week: 0,
+          password_count: 6,
+          foreign_ip: '42.7.27.166',
+        });
         setBlockInfo(blockedAfterRequest);
         toast.error('Access blocked by security gateway.');
         return;
@@ -312,6 +346,26 @@ function DashboardHeader({ description, title }: DashboardSectionProps) {
       setIsAddingRequest(true);
       const blockedBeforeAction = await checkIsBlocked();
       if (blockedBeforeAction !== null) {
+        await triggerAutomatedAction({
+          IPLength: 40,
+          IPHeaderLength: 20,
+          TTL: 62,
+          Protocol: 6,
+          SourcePort: 11024,
+          DestPort: 8000,
+          SequenceNumber: 160752180,
+          AckNumber: 260351565,
+          WindowSize: 512,
+          TCPHeaderLength: 20,
+          TCPLength: 0,
+          TCPStream: 32891,
+          TCPUrgentPointer: 0,
+          IPFlags: 0,
+          IPID: 27547,
+          IPchecksum: 30689,
+          TCPflags: 16,
+          TCPChecksum: 46656,
+        });
         localStorage.removeItem(AUTH_STORAGE_KEY);
         navigate('/signin', { replace: true });
         toast.error('Device is blocked by guard service.');
@@ -320,6 +374,26 @@ function DashboardHeader({ description, title }: DashboardSectionProps) {
 
       const ddosBlocked = await trackDdosRequest();
       if (ddosBlocked !== null) {
+        await triggerAutomatedAction({
+          IPLength: 40,
+          IPHeaderLength: 20,
+          TTL: 62,
+          Protocol: 6,
+          SourcePort: 11024,
+          DestPort: 8000,
+          SequenceNumber: 160752180,
+          AckNumber: 260351565,
+          WindowSize: 512,
+          TCPHeaderLength: 20,
+          TCPLength: 0,
+          TCPStream: 32891,
+          TCPUrgentPointer: 0,
+          IPFlags: 0,
+          IPID: 27547,
+          IPchecksum: 30689,
+          TCPflags: 16,
+          TCPChecksum: 46656,
+        });
         localStorage.removeItem(AUTH_STORAGE_KEY);
         navigate('/signin', { replace: true });
         toast.error('Device blocked after dd-s request.');
@@ -329,6 +403,26 @@ function DashboardHeader({ description, title }: DashboardSectionProps) {
       const blockedAfterAction = await checkIsBlocked();
 
       if (blockedAfterAction !== null) {
+        await triggerAutomatedAction({
+          IPLength: 40,
+          IPHeaderLength: 20,
+          TTL: 62,
+          Protocol: 6,
+          SourcePort: 11024,
+          DestPort: 8000,
+          SequenceNumber: 160752180,
+          AckNumber: 260351565,
+          WindowSize: 512,
+          TCPHeaderLength: 20,
+          TCPLength: 0,
+          TCPStream: 32891,
+          TCPUrgentPointer: 0,
+          IPFlags: 0,
+          IPID: 27547,
+          IPchecksum: 30689,
+          TCPflags: 16,
+          TCPChecksum: 46656,
+        });
         localStorage.removeItem(AUTH_STORAGE_KEY);
         navigate('/signin', { replace: true });
         toast.error('Device blocked after DDOS request.');
