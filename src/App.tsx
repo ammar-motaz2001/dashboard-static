@@ -6,11 +6,13 @@ import {
   LayoutDashboard,
   LogIn,
   LogOut,
+  Plus,
   Search,
   Settings,
   Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import toast from 'react-hot-toast';
 import { Navigate, NavLink, Outlet, Route, Routes, useNavigate } from 'react-router-dom';
@@ -28,6 +30,18 @@ interface SidebarItem {
   path: string;
 }
 
+interface GuardResponse {
+  count: number;
+  device_ip: string;
+  is_blocked: boolean;
+}
+
+const API_BASE_URL = 'https://python-model-omar.vercel.app';
+const AUTH_ENDPOINT = `${API_BASE_URL}/auth/login`;
+const REQUEST_ENDPOINT = `${API_BASE_URL}/request`;
+const DDOS_REQUEST_ENDPOINT = `${API_BASE_URL}/ddos-request`;
+const AUTH_STORAGE_KEY = 'dashboard-auth-session';
+
 const stats: StatCard[] = [
   { id: 'revenue', title: 'Monthly Revenue', value: '$48,250', trend: '+12.5%' },
   { id: 'new-users', title: 'New Users', value: '1,420', trend: '+8.2%' },
@@ -43,13 +57,168 @@ const sidebarItems: SidebarItem[] = [
   { label: 'Settings', icon: Settings, path: '/dashboard/settings' },
 ];
 
+async function getGuardSnapshot(url: string): Promise<GuardResponse | null> {
+  try {
+    const response = await fetch(url, { method: 'GET' });
+    if (!response.ok) {
+      return null;
+    }
+
+    return (await response.json()) as GuardResponse;
+  } catch {
+    return null;
+  }
+}
+
+async function checkIsBlocked(): Promise<GuardResponse | null> {
+  const [requestGuard, ddosGuard] = await Promise.all([
+    getGuardSnapshot(REQUEST_ENDPOINT),
+    getGuardSnapshot(DDOS_REQUEST_ENDPOINT),
+  ]);
+
+  if (requestGuard?.is_blocked === true) {
+    return requestGuard;
+  }
+
+  if (ddosGuard?.is_blocked === true) {
+    return ddosGuard;
+  }
+
+  return null;
+}
+
+async function trackLoginRequest(): Promise<GuardResponse | null> {
+  try {
+    await fetch(REQUEST_ENDPOINT, { method: 'POST' });
+  } catch {
+    return null;
+  }
+
+  const requestGuard = await getGuardSnapshot(REQUEST_ENDPOINT);
+  if (requestGuard?.is_blocked === true) {
+    return requestGuard;
+  }
+
+  return null;
+}
+
+async function trackDdosRequest(): Promise<GuardResponse | null> {
+  try {
+    await fetch(DDOS_REQUEST_ENDPOINT, { method: 'POST' });
+  } catch {
+    return null;
+  }
+
+  const ddosGuard = await getGuardSnapshot(DDOS_REQUEST_ENDPOINT);
+  if (ddosGuard?.is_blocked === true) {
+    return ddosGuard;
+  }
+
+  return null;
+}
+
+function BlockedPage({ blockInfo }: { blockInfo: GuardResponse | null }) {
+  const deviceIp = useMemo(() => blockInfo?.device_ip ?? 'Unknown', [blockInfo]);
+  const requestCount = useMemo(() => blockInfo?.count ?? 0, [blockInfo]);
+
+  return (
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-6 py-14">
+      <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-rose-950 to-slate-900" />
+      <section className="relative w-full max-w-xl rounded-3xl border border-rose-500/30 bg-slate-900/80 p-8 text-center shadow-soft backdrop-blur">
+        <p className="text-sm uppercase tracking-[0.18em] text-rose-300">Security Lock</p>
+        <h1 className="mt-3 text-3xl font-semibold text-white">You are blocked</h1>
+        <p className="mt-3 text-sm text-slate-300">
+          Suspicious traffic has been detected from your device. Access is currently blocked.
+        </p>
+        <div className="mt-5 space-y-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm">
+          <p className="text-slate-200">Device IP: {deviceIp}</p>
+          <p className="text-rose-200">Request count: {requestCount}</p>
+        </div>
+      </section>
+    </main>
+  );
+}
+
 function SignInPage() {
   const navigate = useNavigate();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [blockInfo, setBlockInfo] = useState<GuardResponse | null>(null);
+  const [isCheckingBlock, setIsCheckingBlock] = useState(true);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  useEffect(() => {
+    async function runInitialChecks() {
+      const blocked = await checkIsBlocked();
+      setBlockInfo(blocked);
+      setIsCheckingBlock(false);
+    }
+
+    void runInitialChecks();
+  }, []);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    toast.success('Login success');
-    navigate('/dashboard');
+
+    if (isLoading) {
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const requestBlocked = await trackLoginRequest();
+      if (requestBlocked !== null) {
+        setBlockInfo(requestBlocked);
+        toast.error('Device is blocked by request guard.');
+        return;
+      }
+
+      const blocked = await checkIsBlocked();
+      if (blocked !== null) {
+        setBlockInfo(blocked);
+        toast.error('Device is blocked. Login is disabled.');
+        return;
+      }
+
+      const loginResponse = await fetch(AUTH_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!loginResponse.ok) {
+        toast.error('Invalid email or password');
+        return;
+      }
+
+      await trackLoginRequest();
+      const blockedAfterRequest = await checkIsBlocked();
+      if (blockedAfterRequest !== null) {
+        setBlockInfo(blockedAfterRequest);
+        toast.error('Access blocked by security gateway.');
+        return;
+      }
+
+      localStorage.setItem(AUTH_STORAGE_KEY, 'true');
+      toast.success('Login success');
+      navigate('/dashboard');
+    } catch {
+      toast.error('Unable to connect to server.');
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  if (isCheckingBlock) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-200">
+        Checking security status...
+      </main>
+    );
+  }
+
+  if (blockInfo !== null) {
+    return <BlockedPage blockInfo={blockInfo} />;
   }
 
   return (
@@ -90,6 +259,9 @@ function SignInPage() {
                 <input
                   type="email"
                   placeholder="you@company.com"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  required
                   className="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-indigo-400"
                 />
               </label>
@@ -99,16 +271,20 @@ function SignInPage() {
                 <input
                   type="password"
                   placeholder="Enter your password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
                   className="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-indigo-400"
                 />
               </label>
 
               <button
                 type="submit"
+                disabled={isLoading}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-500 px-4 py-3 text-sm font-medium text-white transition hover:bg-indigo-400"
               >
                 <LogIn size={16} />
-                Sign in
+                {isLoading ? 'Signing in...' : 'Sign in'}
               </button>
             </form>
           </div>
@@ -124,6 +300,49 @@ interface DashboardSectionProps {
 }
 
 function DashboardHeader({ description, title }: DashboardSectionProps) {
+  const [isAddingRequest, setIsAddingRequest] = useState(false);
+  const navigate = useNavigate();
+
+  async function handleDdosRequest(): Promise<void> {
+    if (isAddingRequest) {
+      return;
+    }
+
+    try {
+      setIsAddingRequest(true);
+      const blockedBeforeAction = await checkIsBlocked();
+      if (blockedBeforeAction !== null) {
+        localStorage.removeItem(AUTH_STORAGE_KEY);
+        navigate('/signin', { replace: true });
+        toast.error('Device is blocked by guard service.');
+        return;
+      }
+
+      const ddosBlocked = await trackDdosRequest();
+      if (ddosBlocked !== null) {
+        localStorage.removeItem(AUTH_STORAGE_KEY);
+        navigate('/signin', { replace: true });
+        toast.error('Device blocked after dd-s request.');
+        return;
+      }
+
+      const blockedAfterAction = await checkIsBlocked();
+
+      if (blockedAfterAction !== null) {
+        localStorage.removeItem(AUTH_STORAGE_KEY);
+        navigate('/signin', { replace: true });
+        toast.error('Device blocked after DDOS request.');
+        return;
+      }
+
+      toast.success('dd-s request');
+    } catch {
+      toast.error('Failed to call DDOS endpoint');
+    } finally {
+      setIsAddingRequest(false);
+    }
+  }
+
   return (
     <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-slate-900/70 p-5 backdrop-blur">
       <div>
@@ -131,6 +350,15 @@ function DashboardHeader({ description, title }: DashboardSectionProps) {
         <p className="text-sm text-slate-400">{description}</p>
       </div>
       <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => void handleDdosRequest()}
+          disabled={isAddingRequest}
+          className="rounded-lg border border-white/10 bg-white/5 p-2 text-slate-200 hover:bg-white/10"
+          aria-label="Add DDOS request"
+        >
+          <Plus size={18} />
+        </button>
         <button
           type="button"
           className="rounded-lg border border-white/10 bg-white/5 p-2 text-slate-200 hover:bg-white/10"
@@ -150,10 +378,27 @@ function DashboardHeader({ description, title }: DashboardSectionProps) {
 
 function DashboardLayout() {
   const navigate = useNavigate();
+  const [blockInfo, setBlockInfo] = useState<GuardResponse | null>(null);
+
+  useEffect(() => {
+    async function guardDashboard() {
+      const blocked = await checkIsBlocked();
+      if (blocked !== null) {
+        setBlockInfo(blocked);
+      }
+    }
+
+    void guardDashboard();
+  }, []);
 
   function handleSignOut() {
+    localStorage.removeItem(AUTH_STORAGE_KEY);
     toast.success('Signed out');
     navigate('/signin');
+  }
+
+  if (blockInfo !== null) {
+    return <BlockedPage blockInfo={blockInfo} />;
   }
 
   return (
@@ -421,17 +666,24 @@ function SettingsPage() {
   );
 }
 
+function ProtectedRoute() {
+  const isAuthenticated = localStorage.getItem(AUTH_STORAGE_KEY) === 'true';
+  return isAuthenticated ? <Outlet /> : <Navigate to="/signin" replace />;
+}
+
 function App() {
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/signin" replace />} />
       <Route path="/signin" element={<SignInPage />} />
-      <Route path="/dashboard" element={<DashboardLayout />}>
-        <Route index element={<DashboardHomePage />} />
-        <Route path="projects" element={<ProjectsPage />} />
-        <Route path="team" element={<TeamPage />} />
-        <Route path="billing" element={<BillingPage />} />
-        <Route path="settings" element={<SettingsPage />} />
+      <Route element={<ProtectedRoute />}>
+        <Route path="/dashboard" element={<DashboardLayout />}>
+          <Route index element={<DashboardHomePage />} />
+          <Route path="projects" element={<ProjectsPage />} />
+          <Route path="team" element={<TeamPage />} />
+          <Route path="billing" element={<BillingPage />} />
+          <Route path="settings" element={<SettingsPage />} />
+        </Route>
       </Route>
     </Routes>
   );
