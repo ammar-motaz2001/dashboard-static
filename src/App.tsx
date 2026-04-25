@@ -5,12 +5,15 @@ import {
   Home,
   LayoutDashboard,
   LogIn,
+  LogOut,
   Search,
   Settings,
   Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { Link, Navigate, NavLink, Outlet, Route, Routes } from 'react-router-dom';
+import type { FormEvent } from 'react';
+import toast from 'react-hot-toast';
+import { Navigate, NavLink, Outlet, Route, Routes, useNavigate } from 'react-router-dom';
 
 interface StatCard {
   id: string;
@@ -41,6 +44,14 @@ const sidebarItems: SidebarItem[] = [
 ];
 
 function SignInPage() {
+  const navigate = useNavigate();
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    toast.success('Login success');
+    navigate('/dashboard');
+  }
+
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-6 py-14">
       <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900" />
@@ -73,7 +84,7 @@ function SignInPage() {
               <p className="text-sm text-slate-400">Welcome back. Please enter your details.</p>
             </header>
 
-            <form className="space-y-4">
+            <form className="space-y-4" onSubmit={handleSubmit}>
               <label className="block space-y-2">
                 <span className="text-sm text-slate-300">Email</span>
                 <input
@@ -93,23 +104,13 @@ function SignInPage() {
               </label>
 
               <button
-                type="button"
+                type="submit"
                 className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-500 px-4 py-3 text-sm font-medium text-white transition hover:bg-indigo-400"
               >
                 <LogIn size={16} />
                 Sign in
               </button>
             </form>
-
-            <p className="text-center text-sm text-slate-400">
-              Demo navigation:{' '}
-              <Link
-                to="/dashboard"
-                className="font-medium text-indigo-300 hover:text-indigo-200"
-              >
-                Open dashboard
-              </Link>
-            </p>
           </div>
         </div>
       </section>
@@ -148,15 +149,22 @@ function DashboardHeader({ description, title }: DashboardSectionProps) {
 }
 
 function DashboardLayout() {
+  const navigate = useNavigate();
+
+  function handleSignOut() {
+    toast.success('Signed out');
+    navigate('/signin');
+  }
+
   return (
     <div className="min-h-screen w-full bg-slate-950 text-slate-100">
       <div className="grid min-h-screen w-full gap-6 p-6 lg:grid-cols-[250px_1fr]">
-        <aside className="rounded-2xl border border-white/10 bg-slate-900/70 p-5 backdrop-blur lg:sticky lg:top-6 lg:h-[calc(100vh-3rem)]">
-          <div className="mb-8">
+        <aside className="flex flex-col rounded-2xl border border-white/10 bg-slate-900/70 p-5 backdrop-blur lg:sticky lg:top-6 lg:h-[calc(100vh-3rem)]">
+          <div className="mb-8 shrink-0">
             <p className="text-xs uppercase tracking-[0.18em] text-slate-400">TeamFlow</p>
             <h2 className="mt-1 text-xl font-semibold text-white">Control Panel</h2>
           </div>
-          <nav className="space-y-2 text-sm">
+          <nav className="min-h-0 flex-1 space-y-2 overflow-y-auto text-sm">
             {sidebarItems.map((item) => (
               <NavLink
                 key={item.label}
@@ -173,6 +181,14 @@ function DashboardLayout() {
               </NavLink>
             ))}
           </nav>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="mt-6 flex w-full shrink-0 items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-left text-sm text-slate-200 transition hover:border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-200"
+          >
+            <LogOut size={16} />
+            <span>Sign out</span>
+          </button>
         </aside>
 
         <Outlet />
