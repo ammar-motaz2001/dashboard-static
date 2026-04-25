@@ -36,7 +36,7 @@ interface GuardResponse {
   is_blocked: boolean;
 }
 
-const API_BASE_URL = 'https://python-model-omar.vercel.app';
+const API_BASE_URL = 'https://python-model-v8dl.vercel.app';
 const AUTH_ENDPOINT = `${API_BASE_URL}/auth/login`;
 const REQUEST_ENDPOINT = `${API_BASE_URL}/request`;
 const DDOS_REQUEST_ENDPOINT = `${API_BASE_URL}/ddos-request`;
